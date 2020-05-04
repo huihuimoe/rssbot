@@ -24,6 +24,7 @@ mod fetcher;
 mod gardener;
 mod handlers;
 mod messages;
+mod constant;
 
 use crate::data::Database;
 
@@ -108,6 +109,8 @@ async fn main() -> anyhow::Result<()> {
     event_loop.command("sub", handle!(db, handlers::sub));
     event_loop.command("unsub", handle!(db, handlers::unsub));
     event_loop.command("export", handle!(db, handlers::export));
+    event_loop.command("set", handle!(db, handlers::set));
+    event_loop.command("showset", handle!(db, handlers::showset));
 
     event_loop.polling().start().await.unwrap();
     Ok(())

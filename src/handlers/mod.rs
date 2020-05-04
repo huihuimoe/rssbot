@@ -15,6 +15,7 @@ use tbot::{
 use crate::client::pull_feed;
 use crate::data::Database;
 use crate::messages::{format_large_msg, Escape};
+use crate::constant::GLOBAL_ADMIN;
 
 mod opml;
 
@@ -67,6 +68,144 @@ pub async fn start(
     Ok(())
 }
 
+pub async fn showset(
+    db: Arc<Mutex<Database>>,
+    cmd: Arc<Command<Text>>,
+) -> Result<(), tbot::errors::MethodCall> {
+    let chat_id = cmd.chat.id;
+    let chat_id_str = cmd.chat.id.to_string();
+    let text = &cmd.text.value;
+    let args = text.split_whitespace().collect::<Vec<_>>();
+    let mut target_id = chat_id;
+    let target = &mut MsgTarget::new(chat_id, cmd.message_id);
+    let feed_url;
+    reject_cmd_from_channel!(cmd, target);
+
+    match &*args {
+        [url] => {
+            let user_id = cmd.from.as_ref().unwrap().id;
+            let result = check_op_permission(&cmd.bot, &chat_id_str, target, user_id).await?;
+            if result.is_none() {
+                return Ok(());
+            }
+            feed_url = url;
+        },
+        [channel, url] => {
+            let user_id = cmd.from.as_ref().unwrap().id;
+            let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
+            if channel_id.is_none() {
+                return Ok(());
+            }
+            target_id = channel_id.unwrap();
+            feed_url = url;
+        }
+        [..] => {
+            let msg = "使用方法: /showset [Channel ID] <RSS URL>";
+            update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+            return Ok(());
+        }
+    };
+
+    let setting = db.lock().unwrap().get_setting(target_id.0, &feed_url).unwrap();
+    let str = setting.disable_preview.unwrap_or(true).to_string();
+
+    let msg = format!(
+        "disable_preview: {} \n",
+        Escape(&str)
+    );
+
+    update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+
+    Ok(())
+}
+
+pub async fn set(
+    db: Arc<Mutex<Database>>,
+    cmd: Arc<Command<Text>>,
+) -> Result<(), tbot::errors::MethodCall> {
+    let chat_id = cmd.chat.id;
+    let chat_id_str = cmd.chat.id.to_string();
+    let text = &cmd.text.value;
+    let args = text.split_whitespace().collect::<Vec<_>>();
+    let mut target_id = chat_id;
+    let target = &mut MsgTarget::new(chat_id, cmd.message_id);
+    let feed_url;
+    let setting_key_value;
+    reject_cmd_from_channel!(cmd, target);
+
+    match &*args {
+        [url, kv] => {
+            let user_id = cmd.from.as_ref().unwrap().id;
+            let result = check_op_permission(&cmd.bot, &chat_id_str, target, user_id).await?;
+            if result.is_none() {
+                return Ok(());
+            }
+            feed_url = url;
+            setting_key_value = *kv;
+        },
+        [channel, url, kv] => {
+            let user_id = cmd.from.as_ref().unwrap().id;
+            let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
+            if channel_id.is_none() {
+                return Ok(());
+            }
+            target_id = channel_id.unwrap();
+            feed_url = url;
+            setting_key_value = *kv;
+        }
+        [..] => {
+            let msg = "使用方法: /set [Channel ID] <RSS URL> <key=value>";
+            update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+            return Ok(());
+        }
+    };
+
+    let setting_key_value_arr = setting_key_value.split("=").collect::<Vec<_>>();
+    let setting_key;
+    let setting_value;
+    match *setting_key_value_arr {
+        [key, value] => {
+            setting_key = key;
+            setting_value = value;
+        }
+        [..] => {
+            let msg = "使用方法: /set [Channel ID] <RSS URL> <key=value>";
+            update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+            return Ok(());
+        }
+    }
+
+    let mut setting = db.lock().unwrap().get_setting(target_id.0, &feed_url).unwrap();
+
+    match setting_key {
+        "disable_preview" => {
+            let setting_value_parsed = setting_value.parse::<bool>();
+            match setting_value_parsed {
+                Ok(v) => setting.disable_preview = Some(v),
+                Err(e) => {
+                    let msg = format!("设置值错误 ({})", e);
+                    update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+                    return Ok(());
+                },
+            }
+        }
+        _ => {
+            let msg = "没有此设置项";
+            update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+            return Ok(());
+        }
+    }
+
+    let msg = if db.lock().unwrap().update_setting(target_id.0, &feed_url, &setting) {
+        "更改完成"
+    } else {
+        "更改失败"
+    };
+    update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+
+    Ok(())
+}
+
 pub async fn rss(
     db: Arc<Mutex<Database>>,
     cmd: Arc<Command<Text>>,
@@ -79,7 +218,7 @@ pub async fn rss(
 
     if !channel.is_empty() {
         let user_id = cmd.from.as_ref().unwrap().id;
-        let channel_id = check_channel_permission(&cmd.bot, channel, target, user_id).await?;
+        let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
         if channel_id.is_none() {
             return Ok(());
         }
@@ -130,6 +269,7 @@ pub async fn sub(
     cmd: Arc<Command<Text>>,
 ) -> Result<(), tbot::errors::MethodCall> {
     let chat_id = cmd.chat.id;
+    let chat_id_str = chat_id.to_string();
     let text = &cmd.text.value;
     let args = text.split_whitespace().collect::<Vec<_>>();
     let mut target_id = chat_id;
@@ -138,10 +278,17 @@ pub async fn sub(
     reject_cmd_from_channel!(cmd, target);
 
     match &*args {
-        [url] => feed_url = url,
+        [url] => {
+            let user_id = cmd.from.as_ref().unwrap().id;
+            let result = check_op_permission(&cmd.bot, &chat_id_str, target, user_id).await?;
+            if result.is_none() {
+                return Ok(());
+            }
+            feed_url = url
+        },
         [channel, url] => {
             let user_id = cmd.from.as_ref().unwrap().id;
-            let channel_id = check_channel_permission(&cmd.bot, channel, target, user_id).await?;
+            let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
             if channel_id.is_none() {
                 return Ok(());
             }
@@ -193,6 +340,7 @@ pub async fn unsub(
     cmd: Arc<Command<Text>>,
 ) -> Result<(), tbot::errors::MethodCall> {
     let chat_id = cmd.chat.id;
+    let chat_id_str = cmd.chat.id.to_string();
     let text = &cmd.text.value;
     let args = text.split_whitespace().collect::<Vec<_>>();
     let mut target_id = chat_id;
@@ -201,10 +349,17 @@ pub async fn unsub(
     reject_cmd_from_channel!(cmd, target);
 
     match &*args {
-        [url] => feed_url = url,
+        [url] => {
+            let user_id = cmd.from.as_ref().unwrap().id;
+            let result = check_op_permission(&cmd.bot, &chat_id_str, target, user_id).await?;
+            if result.is_none() {
+                return Ok(());
+            }
+            feed_url = url
+        },
         [channel, url] => {
             let user_id = cmd.from.as_ref().unwrap().id;
-            let channel_id = check_channel_permission(&cmd.bot, channel, target, user_id).await?;
+            let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
             if channel_id.is_none() {
                 return Ok(());
             }
@@ -242,7 +397,7 @@ pub async fn export(
 
     if !channel.is_empty() {
         let user_id = cmd.from.as_ref().unwrap().id;
-        let channel_id = check_channel_permission(&cmd.bot, channel, target, user_id).await?;
+        let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
         if channel_id.is_none() {
             return Ok(());
         }
@@ -288,42 +443,46 @@ async fn update_response(
     Ok(())
 }
 
-async fn check_channel_permission(
+async fn check_op_permission(
     bot: &Bot,
-    channel: &str,
+    chat: &str,
     target: &mut MsgTarget,
     user_id: tbot::types::user::Id,
 ) -> Result<Option<tbot::types::chat::Id>, tbot::errors::MethodCall> {
     use tbot::errors::MethodCall;
-    let channel_id = channel
+    let chat_id = chat
         .parse::<i64>()
         .map(|id| parameters::ChatId::Id(id.into()))
-        .unwrap_or_else(|_| parameters::ChatId::Username(channel));
-    update_response(bot, target, parameters::Text::plain("正在验证 Channel")).await?;
+        .unwrap_or_else(|_| parameters::ChatId::Username(chat));
+    update_response(bot, target, parameters::Text::plain("正在验证")).await?;
 
-    let chat = match bot.get_chat(channel_id).call().await {
+    let chat = match bot.get_chat(chat_id).call().await {
         Err(MethodCall::RequestError {
             description,
             error_code: 400,
             ..
         }) => {
-            let msg = format!("无法找到目标 Channel：{}", description);
+            let msg = format!("无法找到目标 {}", description);
             update_response(bot, target, parameters::Text::plain(&msg)).await?;
             return Ok(None);
         }
         other => other?,
     };
-    if !chat.kind.is_channel() {
-        update_response(bot, target, parameters::Text::plain("目标需为 Channel")).await?;
-        return Ok(None);
+    if chat.kind.is_private() {
+        if chat.id.0 == user_id.0 {
+            return Ok(Some(chat.id));
+        } else {
+            update_response(bot, target, parameters::Text::plain("目标不能为别人")).await?;
+            return Ok(None);
+        }
     }
-    let admins = match bot.get_chat_administrators(channel_id).call().await {
+    let admins = match bot.get_chat_administrators(chat_id).call().await {
         Err(MethodCall::RequestError {
             description,
             error_code: 400,
             ..
         }) => {
-            let msg = format!("无法获取频道信息（{}），请将本 Bot 设为管理员", description);
+            let msg = format!("无法获取信息（{}），请将本 Bot 设为管理员", description);
             update_response(bot, target, parameters::Text::plain(&msg)).await?;
             return Ok(None);
         }
@@ -333,27 +492,36 @@ async fn check_channel_permission(
         .iter()
         .find(|member| member.user.id == user_id)
         .is_some();
-    if !user_is_admin {
+    if !user_is_admin || !is_user_global_admin(user_id) {
         update_response(
             bot,
             target,
-            parameters::Text::plain("该命令只能由 Channel 管理员使用"),
+            parameters::Text::plain("该命令只能由目标管理员使用"),
         )
         .await?;
         return Ok(None);
     }
-    let bot_is_admin = admins
-        .iter()
-        .find(|member| member.user.id == *crate::BOT_ID.get().unwrap())
-        .is_some();
-    if !bot_is_admin {
-        update_response(
-            bot,
-            target,
-            parameters::Text::plain("请将本 Bot 设为管理员"),
-        )
-        .await?;
-        return Ok(None);
+
+    if chat.kind.is_channel() {
+        let bot_is_admin = admins
+            .iter()
+            .find(|member| member.user.id == *crate::BOT_ID.get().unwrap())
+            .is_some();
+        if !bot_is_admin {
+            update_response(
+                bot,
+                target,
+                parameters::Text::plain("请将本 Bot 设为 Channel 管理员"),
+            )
+            .await?;
+            return Ok(None);
+        }
     }
     Ok(Some(chat.id))
+}
+
+fn is_user_global_admin(
+    user_id: tbot::types::user::Id,
+) -> bool {
+    GLOBAL_ADMIN.contains(&user_id.0)
 }

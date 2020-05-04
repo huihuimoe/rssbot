@@ -24,8 +24,20 @@ fn gen_hash<T: Hash>(t: &T) -> u64 {
     hasher.finish()
 }
 
-type FeedId = u64;
-type SubscriberId = i64;
+pub type FeedId = u64;
+pub type SubscriberId = i64;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FeedSettings {
+    pub disable_preview: Option<bool>,
+}
+
+pub fn get_combined_feed_settings(settings: Option<FeedSettings>) -> FeedSettings {
+    let before = settings.unwrap_or(FeedSettings::default());
+    FeedSettings {
+        disable_preview: Some(before.disable_preview.unwrap_or(true)),
+    }
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Feed {
@@ -35,6 +47,7 @@ pub struct Feed {
     pub subscribers: HashSet<SubscriberId, Size64>,
     pub ttl: Option<u32>,
     hash_list: Vec<u64>,
+    pub settings: Option<HashMap<SubscriberId, FeedSettings, Size64>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -80,6 +93,19 @@ impl Database {
                     subscribed_feeds.insert(feed_id);
                 }
                 feeds.insert(feed_id, feed);
+            }
+
+            for (_, feed) in &mut feeds {
+                // 从旧数据库升级 (增加settings)
+                if feed.settings.is_none() {
+                    let mut settings = HashMap::with_hasher(Size64::default());
+                    for subscriber in &feed.subscribers {
+                        settings
+                            .entry(subscriber.to_owned())
+                            .or_insert_with(FeedSettings::default);
+                    }
+                    feed.settings = Some(settings);
+                }
             }
 
             Ok(Database {
@@ -159,8 +185,14 @@ impl Database {
                 ttl: rss.ttl,
                 hash_list: rss.items.iter().map(gen_item_hash).collect(),
                 subscribers: HashSet::default(),
+                settings: Some(HashMap::with_hasher(Size64::default())),
             });
             feed.subscribers.insert(subscriber);
+            feed.settings
+                .as_mut()
+                .unwrap()
+                .entry(subscriber.to_owned())
+                .or_insert_with(FeedSettings::default);
         }
         self.save().unwrap_or_default();
         true
@@ -186,6 +218,7 @@ impl Database {
         let result;
         let clear_feed;
         if let Some(feed) = self.feeds.get_mut(&feed_id) {
+            feed.settings.as_mut().unwrap().remove(&subscriber);
             if feed.subscribers.remove(&subscriber) {
                 clear_feed = feed.subscribers.is_empty();
                 result = feed.clone();
@@ -220,10 +253,49 @@ impl Database {
                     let feed = self.feeds.get_mut(&feed_id).unwrap();
                     feed.subscribers.remove(&from);
                     feed.subscribers.insert(to);
+                    let settings = feed.settings.as_mut().unwrap();
+                    let setting = settings.get(&from).unwrap().clone();
+                    settings.remove(&from);
+                    settings.insert(to, setting);
                 }
                 self.subscribers.insert(to, feeds);
             })
             .is_some()
+    }
+
+    pub fn get_setting(&mut self, subscriber: SubscriberId, rss_link: &str) -> Option<FeedSettings> {
+        let feed_id = gen_hash(&rss_link);
+
+        let setting: FeedSettings;
+        if let Some(feed) = self.feeds.get_mut(&feed_id) {
+            setting = feed.settings
+                .as_mut()
+                .unwrap()
+                .get(&subscriber)
+                .unwrap()
+                .clone();
+        } else {
+            return None;
+        };
+
+        Some(get_combined_feed_settings(Some(setting)))
+    }
+
+    pub fn update_setting(&mut self, subscriber: SubscriberId, rss_link: &str, new_settings: &FeedSettings) -> bool {
+        let feed_id = gen_hash(&rss_link);
+
+        if let Some(feed) = self.feeds.get_mut(&feed_id) {
+            let settings = feed.settings
+                .as_mut()
+                .unwrap()
+                .entry(subscriber)
+                .or_insert(FeedSettings::default());
+            *settings = new_settings.clone();
+        } else {
+            return false;
+        };
+        self.save().unwrap_or_default();
+        true
     }
 
     /// Update the feed in database, return updates

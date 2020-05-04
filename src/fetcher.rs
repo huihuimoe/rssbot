@@ -18,8 +18,15 @@ use tokio::{
 };
 
 use crate::client::pull_feed;
-use crate::data::{Database, Feed, FeedUpdate};
+use crate::data::{
+    SubscriberId,
+    Database,
+    Feed,
+    FeedUpdate,
+    FeedSettings,
+};
 use crate::messages::{format_large_msg, Escape};
+use crate::feed;
 
 pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval: u32) {
     let mut queue = FetchQueue::new();
@@ -81,7 +88,7 @@ async fn fetch_and_push_updates(
                     Escape(&feed.title),
                     Escape(&e.to_user_friendly())
                 );
-                push_updates(&bot, &db, feed.subscribers, parameters::Text::html(&msg)).await?;
+                push_info_updates(&bot, &db, &feed, parameters::Text::html(&msg)).await?;
             }
             return Ok(());
         }
@@ -91,29 +98,13 @@ async fn fetch_and_push_updates(
     for update in updates {
         match update {
             FeedUpdate::Items(items) => {
-                let msgs =
-                    format_large_msg(format!("<b>{}</b>", Escape(&feed.title)), &items, |item| {
-                        let title = item
-                            .title
-                            .as_ref()
-                            .map(|s| s.as_str())
-                            .unwrap_or_else(|| &feed.title);
-                        let link = item
-                            .link
-                            .as_ref()
-                            .map(|s| s.as_str())
-                            .unwrap_or_else(|| &feed.link);
-                        format!("<a href=\"{}\">{}</a>", Escape(link), Escape(title))
-                    });
-                for msg in msgs {
-                    push_updates(
-                        &bot,
-                        &db,
-                        feed.subscribers.iter().copied(),
-                        parameters::Text::html(&msg),
-                    )
-                    .await?;
-                }
+                push_rss_updates(
+                    &bot,
+                    &db,
+                    &feed,
+                    &items,
+                )
+                .await?;
             }
             FeedUpdate::Title(new_title) => {
                 let msg = format!(
@@ -122,10 +113,10 @@ async fn fetch_and_push_updates(
                     Escape(&feed.title),
                     Escape(&new_title)
                 );
-                push_updates(
+                push_info_updates(
                     &bot,
                     &db,
-                    feed.subscribers.iter().copied(),
+                    &feed,
                     parameters::Text::html(&msg),
                 )
                 .await?;
@@ -135,49 +126,93 @@ async fn fetch_and_push_updates(
     Ok(())
 }
 
-async fn push_updates<I: IntoIterator<Item = i64>>(
+async fn push_rss_updates(
     bot: &Bot,
     db: &Arc<Mutex<Database>>,
-    subscribers: I,
+    feed: &Feed,
+    items: &Vec<feed::Item>,
+) -> Result<(), tbot::errors::MethodCall> {
+    let msgs =
+        format_large_msg(format!("<b>{}</b>", Escape(&feed.title)), &items, |item| {
+            let title = item
+                .title
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or_else(|| &feed.title);
+            let link = item
+                .link
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or_else(|| &feed.link);
+            format!("<a href=\"{}\">{}</a>", Escape(link), Escape(title))
+        });
+    for msg in msgs {
+        for subscriber in feed.subscribers.iter().copied() {
+            let settings = db.lock().unwrap().get_setting(subscriber, &feed.link).unwrap();
+            let formatted_msg = parameters::Text::html(&msg);
+            push_message(&bot, &db, subscriber, &settings, formatted_msg).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn push_info_updates(
+    bot: &Bot,
+    db: &Arc<Mutex<Database>>,
+    feed: &Feed,
+    msg: parameters::Text<'_>,
+) -> Result<(), tbot::errors::MethodCall> {
+    for subscriber in feed.subscribers.iter().copied() {
+        let settings = db.lock().unwrap().get_setting(subscriber, &feed.link).unwrap();
+        push_message(&bot, &db, subscriber, &settings, msg).await?;
+    }
+    Ok(())
+}
+
+async fn push_message(
+    bot: &Bot,
+    db: &Arc<Mutex<Database>>,
+    mut subscriber: SubscriberId,
+    settings: &FeedSettings,
     msg: parameters::Text<'_>,
 ) -> Result<(), tbot::errors::MethodCall> {
     use tbot::errors::MethodCall;
-    for mut subscriber in subscribers {
-        'retry: for _ in 0..3 {
-            match bot
-                .send_message(tbot::types::chat::Id(subscriber), msg)
-                .web_page_preview(WebPagePreviewState::Disabled)
-                .call()
-                .await
-            {
-                Err(MethodCall::RequestError { description, .. })
-                    if chat_is_unavailable(&description) =>
-                {
-                    db.lock().unwrap().delete_subscriber(subscriber);
-                }
-                Err(MethodCall::RequestError {
-                    migrate_to_chat_id: Some(new_chat_id),
-                    ..
-                }) => {
-                    db.lock()
-                        .unwrap()
-                        .update_subscriber(subscriber, new_chat_id.0);
-                    subscriber = new_chat_id.0;
-                    continue 'retry;
-                }
-                Err(MethodCall::RequestError {
-                    retry_after: Some(delay),
-                    ..
-                }) => {
-                    time::delay_for(Duration::from_secs(delay)).await;
-                    continue 'retry;
-                }
-                other => {
-                    other?;
-                }
-            }
-            break 'retry;
+    'retry: for _ in 0..3 {
+        let mut bot_msg = bot.send_message(tbot::types::chat::Id(subscriber), msg);
+        if settings.disable_preview.unwrap() {
+            bot_msg = bot_msg.web_page_preview(WebPagePreviewState::Disabled)
         }
+        match bot_msg
+            .call()
+            .await
+        {
+            Err(MethodCall::RequestError { description, .. })
+                if chat_is_unavailable(&description) =>
+            {
+                db.lock().unwrap().delete_subscriber(subscriber);
+            }
+            Err(MethodCall::RequestError {
+                migrate_to_chat_id: Some(new_chat_id),
+                ..
+            }) => {
+                db.lock()
+                    .unwrap()
+                    .update_subscriber(subscriber, new_chat_id.0);
+                subscriber = new_chat_id.0;
+                continue 'retry;
+            }
+            Err(MethodCall::RequestError {
+                retry_after: Some(delay),
+                ..
+            }) => {
+                time::delay_for(Duration::from_secs(delay)).await;
+                continue 'retry;
+            }
+            other => {
+                other?;
+            }
+        }
+        break 'retry;
     }
     Ok(())
 }
