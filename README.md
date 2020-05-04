@@ -21,6 +21,8 @@
     /rss       - 显示当前订阅的 RSS 列表
     /sub       - 订阅一个 RSS: /sub http://example.com/feed.xml
     /unsub     - 退订一个 RSS: /unsub http://example.com/feed.xml
+    /set       - 设置一个 RSS: /set http://example.com/feed.xml key=value
+    /showset   - 查看一个 RSS 设置: /showset http://example.com/feed.xml
     /export    - 导出为 OPML
 
 ## 下载
