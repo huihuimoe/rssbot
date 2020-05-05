@@ -18,13 +18,13 @@ use tbot::{
 use tokio;
 
 mod client;
+mod constant;
 mod data;
 mod feed;
 mod fetcher;
 mod gardener;
 mod handlers;
 mod messages;
-mod constant;
 
 use crate::data::Database;
 

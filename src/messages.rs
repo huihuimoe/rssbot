@@ -1,6 +1,5 @@
 use std::fmt;
-
-pub const TELEGRAM_MAX_MSG_LEN: usize = 4096;
+use crate::constant::TELEGRAM_MAX_MSG_LEN;
 
 pub fn format_large_msg<T, F>(head: String, data: &[T], line_format_fn: F) -> Vec<String>
 where

@@ -13,9 +13,9 @@ use tbot::{
 };
 
 use crate::client::pull_feed;
+use crate::constant::GLOBAL_ADMIN;
 use crate::data::Database;
 use crate::messages::{format_large_msg, Escape};
-use crate::constant::GLOBAL_ADMIN;
 
 mod opml;
 
@@ -83,7 +83,7 @@ pub async fn showset(
     match &*args {
         [url] => {
             feed_url = url;
-        },
+        }
         [channel, url] => {
             let user_id = cmd.from.as_ref().unwrap().id;
             let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
@@ -100,7 +100,11 @@ pub async fn showset(
         }
     };
 
-    let setting = db.lock().unwrap().get_setting(target_id.0, &feed_url).unwrap();
+    let setting = db
+        .lock()
+        .unwrap()
+        .get_setting(target_id.0, &feed_url)
+        .unwrap();
 
     let msg = format!(
         "disable_preview: {} \n\
@@ -141,7 +145,7 @@ pub async fn set(
             }
             feed_url = url;
             setting_key_value = *kv;
-        },
+        }
         [channel, url, kv] => {
             let user_id = cmd.from.as_ref().unwrap().id;
             let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
@@ -174,7 +178,11 @@ pub async fn set(
         }
     }
 
-    let mut setting = db.lock().unwrap().get_setting(target_id.0, &feed_url).unwrap();
+    let mut setting = db
+        .lock()
+        .unwrap()
+        .get_setting(target_id.0, &feed_url)
+        .unwrap();
     let mut err = None;
     match setting_key {
         "disable_preview" => {
@@ -217,7 +225,11 @@ pub async fn set(
         return Ok(());
     }
 
-    let msg = if db.lock().unwrap().update_setting(target_id.0, &feed_url, &setting) {
+    let msg = if db
+        .lock()
+        .unwrap()
+        .update_setting(target_id.0, &feed_url, &setting)
+    {
         "更改完成"
     } else {
         "更改失败"
@@ -306,7 +318,7 @@ pub async fn sub(
                 return Ok(());
             }
             feed_url = url
-        },
+        }
         [channel, url] => {
             let user_id = cmd.from.as_ref().unwrap().id;
             let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
@@ -377,7 +389,7 @@ pub async fn unsub(
                 return Ok(());
             }
             feed_url = url
-        },
+        }
         [channel, url] => {
             let user_id = cmd.from.as_ref().unwrap().id;
             let channel_id = check_op_permission(&cmd.bot, channel, target, user_id).await?;
@@ -541,8 +553,6 @@ async fn check_op_permission(
     Ok(Some(chat.id))
 }
 
-fn is_user_global_admin(
-    user_id: tbot::types::user::Id,
-) -> bool {
+fn is_user_global_admin(user_id: tbot::types::user::Id) -> bool {
     GLOBAL_ADMIN.contains(&user_id.0)
 }

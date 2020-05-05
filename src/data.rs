@@ -269,12 +269,17 @@ impl Database {
             .is_some()
     }
 
-    pub fn get_setting(&mut self, subscriber: SubscriberId, rss_link: &str) -> Option<FeedSettings> {
+    pub fn get_setting(
+        &mut self,
+        subscriber: SubscriberId,
+        rss_link: &str,
+    ) -> Option<FeedSettings> {
         let feed_id = gen_hash(&rss_link);
 
         let setting: FeedSettings;
         if let Some(feed) = self.feeds.get_mut(&feed_id) {
-            setting = feed.settings
+            setting = feed
+                .settings
                 .as_mut()
                 .unwrap()
                 .get(&subscriber)
@@ -287,11 +292,17 @@ impl Database {
         Some(get_combined_feed_settings(Some(setting)))
     }
 
-    pub fn update_setting(&mut self, subscriber: SubscriberId, rss_link: &str, new_settings: &FeedSettings) -> bool {
+    pub fn update_setting(
+        &mut self,
+        subscriber: SubscriberId,
+        rss_link: &str,
+        new_settings: &FeedSettings,
+    ) -> bool {
         let feed_id = gen_hash(&rss_link);
 
         if let Some(feed) = self.feeds.get_mut(&feed_id) {
-            let settings = feed.settings
+            let settings = feed
+                .settings
                 .as_mut()
                 .unwrap()
                 .entry(subscriber)

@@ -18,15 +18,9 @@ use tokio::{
 };
 
 use crate::client::pull_feed;
-use crate::data::{
-    SubscriberId,
-    Database,
-    Feed,
-    FeedUpdate,
-    FeedSettings,
-};
-use crate::messages::{format_large_msg, Escape};
+use crate::data::{Database, Feed, FeedSettings, FeedUpdate, SubscriberId};
 use crate::feed;
+use crate::messages::{format_large_msg, Escape};
 
 pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval: u32) {
     let mut queue = FetchQueue::new();
@@ -101,13 +95,7 @@ async fn fetch_and_push_updates(
     for update in updates {
         match update {
             FeedUpdate::Items(items) => {
-                push_rss_updates(
-                    &bot,
-                    &db,
-                    &feed,
-                    &items,
-                )
-                .await?;
+                push_rss_updates(&bot, &db, &feed, &items).await?;
             }
             FeedUpdate::Title(new_title) => {
                 let msg = format!(
@@ -116,13 +104,7 @@ async fn fetch_and_push_updates(
                     Escape(&feed.title),
                     Escape(&new_title)
                 );
-                push_info_updates(
-                    &bot,
-                    &db,
-                    &feed,
-                    parameters::Text::html(&msg),
-                )
-                .await?;
+                push_info_updates(&bot, &db, &feed, parameters::Text::html(&msg)).await?;
             }
         }
     }
@@ -135,8 +117,20 @@ async fn push_rss_updates(
     feed: &Feed,
     items: &Vec<feed::Item>,
 ) -> Result<(), tbot::errors::MethodCall> {
-    let msgs =
-        format_large_msg(format!("<b>{}</b>", Escape(&feed.title)), &items, |item| {
+    for subscriber in feed.subscribers.iter().copied() {
+        let settings = db
+            .lock()
+            .unwrap()
+            .get_setting(subscriber, &feed.link)
+            .unwrap();
+
+        let head = if settings.hide_rss_title.unwrap() {
+            String::new()
+        } else {
+            format!("<b>{}</b>", Escape(&feed.title))
+        };
+
+        let format_rss_item = |item: &feed::Item| -> String {
             let title = item
                 .title
                 .as_ref()
@@ -147,11 +141,23 @@ async fn push_rss_updates(
                 .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or_else(|| &feed.link);
+            if settings.link_only.unwrap() {
+                return format!("<a href=\"{}\">{}</a>", Escape(link), Escape(link));
+            }
             format!("<a href=\"{}\">{}</a>", Escape(link), Escape(title))
-        });
-    for msg in msgs {
-        for subscriber in feed.subscribers.iter().copied() {
-            let settings = db.lock().unwrap().get_setting(subscriber, &feed.link).unwrap();
+        };
+
+        let msgs;
+        if settings.combine_msg.unwrap() {
+            msgs = format_large_msg(head, &items, format_rss_item);
+        } else {
+            msgs = items
+                .iter()
+                .map(|item| String::new() + &head + "\n" + &format_rss_item(item))
+                .collect();
+        }
+
+        for msg in msgs {
             let formatted_msg = parameters::Text::html(&msg);
             push_message(&bot, &db, subscriber, &settings, formatted_msg).await?;
         }
@@ -166,7 +172,11 @@ async fn push_info_updates(
     msg: parameters::Text<'_>,
 ) -> Result<(), tbot::errors::MethodCall> {
     for subscriber in feed.subscribers.iter().copied() {
-        let settings = db.lock().unwrap().get_setting(subscriber, &feed.link).unwrap();
+        let settings = db
+            .lock()
+            .unwrap()
+            .get_setting(subscriber, &feed.link)
+            .unwrap();
         push_message(&bot, &db, subscriber, &settings, msg).await?;
     }
     Ok(())
@@ -185,10 +195,7 @@ async fn push_message(
         if settings.disable_preview.unwrap() {
             bot_msg = bot_msg.web_page_preview(WebPagePreviewState::Disabled)
         }
-        match bot_msg
-            .call()
-            .await
-        {
+        match bot_msg.call().await {
             Err(MethodCall::RequestError { description, .. })
                 if chat_is_unavailable(&description) =>
             {
