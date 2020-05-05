@@ -537,7 +537,7 @@ async fn check_op_permission(
         .iter()
         .find(|member| member.user.id == user_id)
         .is_some();
-    if !user_is_admin || !is_user_global_admin(user_id) {
+    if !user_is_admin && !is_user_global_admin(user_id) {
         update_response(
             bot,
             target,
