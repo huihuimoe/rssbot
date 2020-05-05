@@ -30,12 +30,18 @@ pub type SubscriberId = i64;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FeedSettings {
     pub disable_preview: Option<bool>,
+    pub link_only: Option<bool>,
+    pub hide_rss_title: Option<bool>,
+    pub combine_msg: Option<bool>,
 }
 
 pub fn get_combined_feed_settings(settings: Option<FeedSettings>) -> FeedSettings {
     let before = settings.unwrap_or(FeedSettings::default());
     FeedSettings {
         disable_preview: Some(before.disable_preview.unwrap_or(true)),
+        link_only: Some(before.link_only.unwrap_or(false)),
+        hide_rss_title: Some(before.hide_rss_title.unwrap_or(false)),
+        combine_msg: Some(before.combine_msg.unwrap_or(true)),
     }
 }
 
@@ -102,7 +108,7 @@ impl Database {
                     for subscriber in &feed.subscribers {
                         settings
                             .entry(subscriber.to_owned())
-                            .or_insert_with(FeedSettings::default);
+                            .or_insert(get_combined_feed_settings(None));
                     }
                     feed.settings = Some(settings);
                 }

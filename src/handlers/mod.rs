@@ -73,7 +73,6 @@ pub async fn showset(
     cmd: Arc<Command<Text>>,
 ) -> Result<(), tbot::errors::MethodCall> {
     let chat_id = cmd.chat.id;
-    let chat_id_str = cmd.chat.id.to_string();
     let text = &cmd.text.value;
     let args = text.split_whitespace().collect::<Vec<_>>();
     let mut target_id = chat_id;
@@ -83,11 +82,6 @@ pub async fn showset(
 
     match &*args {
         [url] => {
-            let user_id = cmd.from.as_ref().unwrap().id;
-            let result = check_op_permission(&cmd.bot, &chat_id_str, target, user_id).await?;
-            if result.is_none() {
-                return Ok(());
-            }
             feed_url = url;
         },
         [channel, url] => {
@@ -107,11 +101,16 @@ pub async fn showset(
     };
 
     let setting = db.lock().unwrap().get_setting(target_id.0, &feed_url).unwrap();
-    let str = setting.disable_preview.unwrap_or(true).to_string();
 
     let msg = format!(
-        "disable_preview: {} \n",
-        Escape(&str)
+        "disable_preview: {} \n\
+         link_only: {} \n\
+         hide_rss_title: {} \n\
+         combine_msg: {}",
+        Escape(&setting.disable_preview.unwrap().to_string()),
+        Escape(&setting.link_only.unwrap().to_string()),
+        Escape(&setting.hide_rss_title.unwrap().to_string()),
+        Escape(&setting.combine_msg.unwrap().to_string()),
     );
 
     update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
@@ -176,17 +175,34 @@ pub async fn set(
     }
 
     let mut setting = db.lock().unwrap().get_setting(target_id.0, &feed_url).unwrap();
-
+    let mut err = None;
     match setting_key {
         "disable_preview" => {
             let setting_value_parsed = setting_value.parse::<bool>();
             match setting_value_parsed {
                 Ok(v) => setting.disable_preview = Some(v),
-                Err(e) => {
-                    let msg = format!("设置值错误 ({})", e);
-                    update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
-                    return Ok(());
-                },
+                Err(e) => err = Some(e.to_string()),
+            }
+        }
+        "link_only" => {
+            let setting_value_parsed = setting_value.parse::<bool>();
+            match setting_value_parsed {
+                Ok(v) => setting.link_only = Some(v),
+                Err(e) => err = Some(e.to_string()),
+            }
+        }
+        "hide_rss_title" => {
+            let setting_value_parsed = setting_value.parse::<bool>();
+            match setting_value_parsed {
+                Ok(v) => setting.hide_rss_title = Some(v),
+                Err(e) => err = Some(e.to_string()),
+            }
+        }
+        "combine_msg" => {
+            let setting_value_parsed = setting_value.parse::<bool>();
+            match setting_value_parsed {
+                Ok(v) => setting.combine_msg = Some(v),
+                Err(e) => err = Some(e.to_string()),
             }
         }
         _ => {
@@ -194,6 +210,11 @@ pub async fn set(
             update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
             return Ok(());
         }
+    }
+    if (!err.is_none()) {
+        let msg = format!("设置值错误 ({})", err.unwrap());
+        update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+        return Ok(());
     }
 
     let msg = if db.lock().unwrap().update_setting(target_id.0, &feed_url, &setting) {
