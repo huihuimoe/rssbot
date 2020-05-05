@@ -102,11 +102,16 @@ pub async fn showset(
         }
     };
 
-    let setting = db
+    let setting_wraped = db
         .lock()
         .unwrap()
-        .get_setting(target_id.0, &feed_url)
-        .unwrap();
+        .get_setting(target_id.0, &feed_url);
+    if setting_wraped.is_none() {
+        let msg = "找不到该订阅";
+        update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+        return Ok(());
+    }
+    let setting = setting_wraped.unwrap();
 
     let msg = format!(
         "disable_preview: {} \n\
@@ -180,11 +185,16 @@ pub async fn set(
         }
     }
 
-    let mut setting = db
+    let setting_wraped = db
         .lock()
         .unwrap()
-        .get_setting(target_id.0, &feed_url)
-        .unwrap();
+        .get_setting(target_id.0, &feed_url);
+    if setting_wraped.is_none() {
+        let msg = "找不到该订阅";
+        update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
+        return Ok(());
+    }
+    let mut setting = setting_wraped.unwrap();
     let mut err = None;
     match setting_key {
         "disable_preview" => {
