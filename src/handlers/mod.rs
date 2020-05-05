@@ -61,6 +61,8 @@ pub async fn start(
                /rss       - 显示当前订阅的 RSS 列表\n\
                /sub       - 订阅一个 RSS：`/sub http://example.com/feed.xml`\n\
                /unsub     - 退订一个 RSS：`/unsub http://example.com/feed.xml`\n\
+               /set       - 设置一个 RSS: `/set http://example.com/feed.xml key=value` \n\
+               /showset   - 查看一个 RSS 设置: `/showset http://example.com/feed.xml` \n\
                /export    - 导出为 OPML\n\
                所有命令均可在后面跟上频道 ID 来管理频道订阅\n\
                例如 `/sub @BotNews http://example.com/feed.xml`";
