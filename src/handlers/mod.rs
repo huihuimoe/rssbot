@@ -102,10 +102,7 @@ pub async fn showset(
         }
     };
 
-    let setting_wraped = db
-        .lock()
-        .unwrap()
-        .get_setting(target_id.0, &feed_url);
+    let setting_wraped = db.lock().unwrap().get_setting(target_id.0, &feed_url);
     if setting_wraped.is_none() {
         let msg = "找不到该订阅";
         update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
@@ -185,10 +182,7 @@ pub async fn set(
         }
     }
 
-    let setting_wraped = db
-        .lock()
-        .unwrap()
-        .get_setting(target_id.0, &feed_url);
+    let setting_wraped = db.lock().unwrap().get_setting(target_id.0, &feed_url);
     if setting_wraped.is_none() {
         let msg = "找不到该订阅";
         update_response(&cmd.bot, target, parameters::Text::plain(&msg)).await?;
@@ -268,6 +262,12 @@ pub async fn rss(
             return Ok(());
         }
         target_id = channel_id.unwrap();
+        if !target.first_time {
+            cmd.bot
+                .delete_message(target.chat_id, target.message_id)
+                .call()
+                .await?;
+        }
     }
 
     let feeds = db.lock().unwrap().subscribed_feeds(target_id.0);
