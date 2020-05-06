@@ -1,8 +1,8 @@
-# rssbot [![Build Status](https://github.com/iovxw/rssbot/workflows/Rust/badge.svg)](https://github.com/iovxw/rssbot/actions?query=workflow%3ARust) [![Github All Releases](https://img.shields.io/github/downloads/iovxw/rssbot/total.svg)](https://github.com/iovxw/rssbot/releases)
+# rssbot [![Build Status](https://github.com/huihuimoe/rssbot/workflows/Rust/badge.svg)](https://github.com/huihuimoe/rssbot/actions?query=workflow%3ARust) [![Github All Releases](https://img.shields.io/github/downloads/huihuimoe/rssbot/total.svg)](https://github.com/huihuimoe/rssbot/releases)
 
 **Other Languages:** [English](README.en.md)
 
-中文 Telegram RSS 机器人 [@RustRssBot](http://t.me/RustRssBot)
+中文 Telegram RSS 机器人。该项目是 [iovxw/rssbot](https://github.com/iovxw/rssbot) 的 fork 版本，在 group 中只有管理员才能使用该 bot ，同时添加了 `/showset` 和 `/set` 配置项。
 
 **支持:**
  - [x] RSS 0.9
@@ -27,7 +27,7 @@
 
 ## 下载
 
-可直接从 [Releases](https://github.com/iovxw/rssbot/releases) 下载预编译的程序, Linux 版本为 *musl* 静态链接, 无需其他依赖
+可直接从 [Releases](https://github.com/huihuimoe/rssbot/releases) 下载预编译的程序, Linux 版本为 *musl* 静态链接, 无需其他依赖
 
 ## 编译
 
