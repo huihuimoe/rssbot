@@ -27,7 +27,7 @@
 
 ## 下载
 
-可直接从 [Releases](https://github.com/huihuimoe/rssbot/releases) 下载预编译的程序, Linux 版本为 *musl* 静态链接, 无需其他依赖
+可直接从 [Releases](https://github.com/huihuimoe/rssbot/releases) 下载预编译的程序（带 `zh` 的为中文版）, Linux 版本为 *musl* 静态链接, 无需其他依赖
 
 ## 编译
 
@@ -53,9 +53,10 @@ FLAGS:
     -V, --version     Prints version information
 
 OPTIONS:
-    -d, --database <database>            Path to database [default: ./rssbot.json]
-        --max-interval <max-interval>    Maximum fetch interval, seconds [default: 43200]
-        --min-interval <min-interval>    Minimum fetch interval, seconds [default: 300]
+    -d, --database <path>           Path to database [default: ./rssbot.json]
+        --max-feed-size <bytes>     Maximum feed size, 0 is unlimited [default: 2097152]
+        --max-interval <seconds>    Maximum fetch interval [default: 43200]
+        --min-interval <seconds>    Minimum fetch interval [default: 300]
 
 ARGS:
     <token>    Telegram bot token

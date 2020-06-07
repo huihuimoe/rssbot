@@ -13,18 +13,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        fetch-depth: 0
+        fetch-depth: 100
     - name: Fetch all tags
       run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
-    - name: Install Musl
-      run: sudo apt install -y musl-tools
-    - name: Install Rust
-      uses: hecrj/setup-rust-action@v1
-      with:
-        rust-version: nightly-2020-03-20
-        targets: x86_64-unknown-linux-musl
-    - name: Build
-      run: cargo build --release --target=x86_64-unknown-linux-musl
     - name: Generate Changelog
       id: changelog
       run: |
@@ -34,6 +25,21 @@ jobs:
         log="${log//$'\n'/'%0A'}"
         log="${log//$'\r'/'%0D'}"
         echo "::set-output name=value::$log"
+    - name: Install Musl
+      run: sudo apt install -y musl-tools
+    - name: Install Rust
+      uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: nightly-2020-03-20
+        targets: x86_64-unknown-linux-musl
+    - name: Build
+      run: |
+        find ./locales -name '*.toml' -printf '%P\0' | while IFS=\n read -r -d '' file
+        do
+            LOCALE=${file%.toml}
+            cargo build --release --target=x86_64-unknown-linux-musl
+            mv ./target/x86_64-unknown-linux-musl/release/rssbot rssbot-$LOCALE-amd64-linux
+        done
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -47,11 +53,9 @@ jobs:
         prerelease: false
     - name: Upload Release Asset
       id: upload-release-asset
-      uses: actions/upload-release-asset@v1
+      uses: iovxw/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./target/x86_64-unknown-linux-musl/release/rssbot
-        asset_name: rssbot-amd64-linux
-        asset_content_type: application/x-elf
+        asset_files: "rssbot-*-amd64-linux"
