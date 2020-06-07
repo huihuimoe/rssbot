@@ -519,7 +519,12 @@ async fn check_op_permission(
         if chat.id.0 == user_id.0 {
             return Ok(Some(chat.id));
         } else {
-            update_response(bot, target, parameters::Text::plain(tr!("target_must_be_a_channel"))).await?;
+            update_response(
+                bot,
+                target,
+                parameters::Text::plain(tr!("target_cannot_be_other")),
+            )
+            .await?;
             return Ok(None);
         }
     }
@@ -555,12 +560,7 @@ async fn check_op_permission(
             .find(|member| member.user.id == *crate::BOT_ID.get().unwrap())
             .is_some();
         if !bot_is_admin {
-            update_response(
-                bot,
-                target,
-                parameters::Text::plain(tr!("make_bot_admin")),
-            )
-            .await?;
+            update_response(bot, target, parameters::Text::plain(tr!("make_bot_admin"))).await?;
             return Ok(None);
         }
     }
