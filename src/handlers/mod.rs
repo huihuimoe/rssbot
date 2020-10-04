@@ -83,7 +83,6 @@ pub async fn showset(
     let mut target_id = chat_id;
     let target = &mut MsgTarget::new(chat_id, cmd.message_id);
     let feed_url;
-    reject_cmd_from_channel!(cmd, target);
 
     match &*args {
         [url] => {
@@ -141,7 +140,6 @@ pub async fn set(
     let target = &mut MsgTarget::new(chat_id, cmd.message_id);
     let feed_url;
     let setting_key_value;
-    reject_cmd_from_channel!(cmd, target);
 
     match &*args {
         [url, kv] => {
